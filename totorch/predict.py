@@ -8,10 +8,19 @@ from tqdm import tqdm
 
 from totorch.features import *
 
+def predict(X: torch.Tensor, K: torch.Tensor, obs: Observable):
+	"""Perform one-step prediction from snapshot matrix.
+
+	Args:
+		X: d x N trajectory snapshot
+		K: Koopman operator
+		obs: Observable function
+	"""
+	return obs.preimage(K@obs(X))
 
 def extrapolate(
 		X0: torch.Tensor, K: torch.Tensor, obs: Observable, T: int, 
-		B=None, u=None, unlift_every=True, differentiable=False
+		B=None, u=None, unlift_every=True,
 	):
 	"""Extrapolate dynamical system from initial conditions using Koopman operator. 
 
@@ -20,29 +29,28 @@ def extrapolate(
 		K: Koopman operator
 		obs: Observable function
 		T: extrapolation length
-
-	Optional args:
-		B: control influence matrix 
-		u: control inputs d (input dimension) x T (trajectory length)
- 		unlift_every: use slower but more accurate extrapolation method (TODO: should not have a difference)
-		differentiable: build extrapolation in autograd-compliant manner
+		B: (optional) control influence matrix 
+		u: (optional) control inputs d (input dimension) x T (trajectory length)
+ 		unlift_every: (optional) use slower but more accurate extrapolation method (TODO: should not have a difference)
 	"""
 	assert X0.shape[0] == obs.d, 'IC dimension should match observable parameters'
-	assert X0.shape[1] >= obs.m, f'Insufficient initial conditions for observable with memory requirement {obs.m}'
-	if not differentiable:
-		K, X0 = K.detach(), X0.detach()
+	if len(X0.shape) == 1:
+		assert obs.m == 1, f'Insufficient initial conditions for observable with memory requirement {obs.m}'
+		X0 = X0.unsqueeze(1)
+	else:
+		assert X0.shape[1] >= obs.m, f'Insufficient initial conditions for observable with memory requirement {obs.m}'
 	if u is not None:
 		assert B is not None, 'Control matrix required'
 		assert u.shape[1] >= T, f'Insufficient control inputs provided for extrapolation length {T}'
-		if not differentiable:
-			B, u = B.detach(), u.detach()
+
+	t = T + obs.m # Return initial conditions + extrapolation
 
 	if unlift_every:
-		if differentiable:
+		if X0.requires_grad:
 			Y = [X0[:, :obs.m]]
 			x_cur = X0[:, :obs.m].unsqueeze(1)
-			for i in range(obs.m, T):
-				z = P@obs(x_cur, differentiable=True)
+			for i in range(obs.m, t):
+				z = K@obs(x_cur)
 				if u is not None:
 					z = z + B@u[:, i-1]
 				x_cur = obs.preimage(z)
@@ -53,17 +61,17 @@ def extrapolate(
 			Y[:, :obs.m] = X0[:, :obs.m]
 			for i in range(obs.m, t):
 				x = Y[:, i-obs.m:i]
-				z = P@obs(x)
+				z = K@obs(x)
 				if u is not None:
 					z += B@u[:, i-1]
 				Y[:, i] = obs.preimage(z).view(-1)
 			return Y
 	else:
-		if differentiable:
-			z_cur = obs(X0[:, :obs.m], differentiable=True)
+		if X0.requires_grad:
+			z_cur = obs(X0[:, :obs.m])
 			Z = [z_cur.view(-1)]
 			for i in range(obs.m, t):
-				z_cur = P@z_cur
+				z_cur = K@z_cur
 				if u is not None:
 					z_cur = z_cur + B@u[:, i-1]
 				Z.append(z_cur.view(-1))
@@ -73,7 +81,7 @@ def extrapolate(
 			Z[:, 0] = obs(X0[:, :obs.m]).view(-1)
 			z = Z[:, obs.m-1].unsqueeze(1)
 			for i in range(obs.m, t):
-				z = P@z
+				z = K@z
 				if u is not None:
 					z += B@u[:, i-1]
 				Z[:, i] = z.view(-1)

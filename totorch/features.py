@@ -95,18 +95,16 @@ class PolynomialObservable(Observable):
 		p: maximum degree of observable
 		d: state dimension
 		k: observable dimension (i.e. no. of polynomials)
-		differentiable: construct observable in autograd-compliant manner, comes with performance penalty.
 
 	Note: for reproducibility, set the Python, Numpy, and Torch random seeds.
 	TODO: if k is too high, init will loop forever.
 	"""
-	def __init__(self, p: int, d: int, k: int, differentiable=False):
+	def __init__(self, p: int, d: int, k: int):
 
 		assert p > 0 and k > 0, "Degree and observable dimension must be at least 1"
 		assert k >= d, "Basis dimension must be at least as large as full state observable"
 		self.p = p 
 		self.psi = dict()
-		self.differentiable = differentiable
 
 		# add full state observable
 		for i in range(d):
@@ -124,7 +122,7 @@ class PolynomialObservable(Observable):
 
 		while len(self.psi) < k:
 			deg = random.randint(2, p) # polynomial of random degree
-			nonzero_terms = np.random.choice(terms[deg-1], deg)
+			nonzero_terms = random.choices(terms[deg-1], k=deg)
 			key = [0 for _ in range(d)] # exponents of terms
 			for term in nonzero_terms:
 				key[int(term)] += 1
@@ -135,7 +133,7 @@ class PolynomialObservable(Observable):
 		super().__init__(d, k, 1)
 
 	def __call__(self, X: torch.Tensor):
-		if self.differentiable:
+		if X.requires_grad:
 			Z = [torch.ones((X.shape[1],), device=X.device) for _ in range(self.k)]
 			for i, key in enumerate(self.psi.keys()):
 				for term, power in enumerate(key):

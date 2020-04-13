@@ -4,31 +4,33 @@ import matplotlib.pyplot as plt
 from scipy.integrate import odeint
 
 def system(z, t, alpha, beta, gamma, delta, u):
+	"""System definition for scipy.integrate.odeint format"""
 	x, y = z
 	xdot = y
 	ydot = -delta*y - alpha*x - beta*(x**3) + gamma*u(t)
 	return xdot, ydot
 
-# Parameters switched for scipy.ode
-def system_ode(t, z, alpha, beta, gamma, delta, u, noise):
-	[x, y] = z
-	xdot = y
-	ydot = -delta*y - alpha*x - beta*(x**3) + gamma*u(t) + noise*np.random.normal()
-	return [xdot, ydot]
-
-def dataset(tmax: int, n: int, alpha=-1.0, beta=1.0, gamma=0.5, delta=0.3, omega=1.2, x0=1.0, xdot0=0.0, u=None):
+def dataset(tmax: int, n: int, alpha=-1.0, beta=1.0, gamma=0.5, delta=0.3, omega=1.2, x0=1.0, y0=0.0, u=None):
+	"""Duffing oscillator 
+	
+	Args:
+		tmax: # seconds 
+		n: # data points (dt = tmax / n)
+		x0: initial condition
+		y0: initial condition
+		u: control signal (Callable : time -> float)
+	"""
 	t = np.linspace(0, tmax, n)
 	if u is None:
 		u = lambda t: np.cos(omega*t)
-	f = odeint(system, (x0, xdot0), t, args=(alpha, beta, gamma, delta, u))
-	X, Y = f[:-1].T, f[1:].T
-	return torch.from_numpy(X).float(), torch.from_numpy(Y).float()
+	X = odeint(system, (x0, y0), t, args=(alpha, beta, gamma, delta, u))
+	return torch.from_numpy(X.T).float()
 
 if __name__ == '__main__': 
 	t, n = 80, 4000
 	taxis = np.linspace(0, t, n)
 
-	# X, Y = dataset(t, n, gamma=0.0, x0=-1.0, xdot0=2.0)
+	# X, Y = dataset(t, n, gamma=0.0, x0=-1.0, y0=2.0)
 	# plt.figure(figsize=(8,8))
 	# plt.title('Unforced')
 	# plt.plot(X[0], X[1])

@@ -4,7 +4,7 @@ import torch
 import numpy as np
 from tqdm import tqdm
 from scipy.integrate import ode
-from typing import Callable
+from typing import Callable, Dict
 
 from totorch.features import *
 from totorch.predict import extrapolate
@@ -12,7 +12,7 @@ from totorch.predict import extrapolate
 def solve_mpc(
 		t0: float, x0: torch.Tensor, dt: float, 
 		K: torch.Tensor, B: torch.Tensor, obs: Observable, cost: Callable, h: int,
-		umin=None, umax=None, lr=0.1, loss_eps: 1e-4, unlift_every=False,
+		umin: float = None, umax: float = None, lr: float = 0.1, loss_eps: float = 1e-4, unlift_every: bool = False,
 	):
 	"""Solve a single step of the MPC problem via Koopman operator. Uses autograd + SGD to solve minimization problem.
 
@@ -36,7 +36,9 @@ def solve_mpc(
 		u_opt: optimal inputs 
 		x_pred: predicted system response 
 	"""
-	u = torch.full((1, h), 0).unsqueeze(2) 
+	x0 = x0.detach().requires_grad_()
+	dim_u = B.shape[1] # dimension of control input
+	u = torch.zeros((dim_u, h, 1))
 	u = torch.nn.Parameter(u)
 	opt = torch.optim.SGD([u], lr=lr, momentum=0.98)
 
@@ -48,44 +50,45 @@ def solve_mpc(
 			return u_in.clamp(min=umin, max=umax)
 		return u_in
 
-	while torch.abs(loss - prev_loss).item() > eps:
+	while torch.abs(loss - prev_loss).item() > loss_eps:
 		prev_loss = loss
-		x_pred = extrapolate(x0.unsqueeze(1), K, obs, h, B=B, u=apply_clamp(u), differentiable=True, unlift_every=unlift_every)
+		x_pred = extrapolate(x0.unsqueeze(1), K, obs, h-1, B=B, u=apply_clamp(u), unlift_every=unlift_every)
 		loss = cost(window, x_pred, u) 
 		opt.zero_grad()
 		loss.backward()
 		opt.step()
 		u.data = apply_clamp(u.data)
 
-	return u.data, x_pred
+	return u.data[:,:,0], x_pred
 
 def mpc_loop(
-		system: Callable, x0: torch.Tensor, dt: float, n_iter: int,
-		K: torch.Tensor, B: torch.Tensor, obs: Observsble, cost: Callable, h: int, 
-		mpc_args={}, n_apply=1, integrator='dop853', sys_args={},
+		plant: Callable, x0: torch.Tensor, dt: float, n_iter: int,
+		K: torch.Tensor, B: torch.Tensor, obs: Observable, cost: Callable, h: int, 
+		umin: float = None, umax: float = None, mpc_args: Dict = {}, n_apply: int = 1, integrator: str = 'dop853', 
 	):
-	"""Run the model-predictive control loop with feedback from a provided reference system.
+	"""Run the model-predictive control loop with feedback from a provided plant.
 
 	Args:
-		system: true ODE system function of the form required by `scipy.integrate.ode`: https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html . Used to provide actual feedback to the controller.
-			Note: should take a named parameter `u`, the control input. Otherwise, system will be simulated uncontrolled. 
+		plant: true ODE system function of the form required by `scipy.integrate.ode`: https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html . Used to provide actual feedback to the controller.
+			Note: the only parameter to the plant should be control input. Please see `totorch.examples.control` for an example plant definition.
 		x0: initial condition (d x 1)
 		dt: discretization time delta
-		n_iter: number of steps to simulate system w/ control
+		n_iter: number of steps to simulate plant w/ control
 		K: Koopman operator (d x d)
 		B: Control influence matrix (d x u) (see `totorch.operators.solve_with_control`) 
 		obs: Observable function
-		cost: convex cost function C : t, x, u -> R. (t, x, u are tensors of 2nd-dimension length h, denoting time, predicted system state, and control input, respectively). If nonconvex, results not guaranteed.
+		cost: convex cost function C : t, x, u -> R. (t, x, u are tensors of 2nd-dimension length h, denoting time, predicted plant state, and control input, respectively). If nonconvex, results not guaranteed.
 		h: horizon 
+		umin: (optional) lower bound on control inputs
+		umax: (optional) upper bound on control inputs
 		mpc_args: (optional) arguments to MPC solver, see `solve_mpc`
 		n_apply: (optional) number of control inputs to apply after each solution. Default 1 (standard MPC).
 		integrator: scipy.ode integrator https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html
-		sys_args: other parameters to system function `system`
 
 	Returns:
 		hist_t: time history
 		hist_u: control input history
-		hist_x: system response history
+		hist_x: plant response history
 
 	"""
 	assert n_apply < h, 'horizon should be larger than n_apply'
@@ -95,25 +98,23 @@ def mpc_loop(
 	hist_u = [torch.zeros(dim_u,)]
 	hist_x = [x0]
 	t = 0.
-	sys_args.update({'u': hist_u[0]})
 
-	r = ode(system).set_integrator(integrator)
-	r.set_initial_value(x0.numpy()).set_f_params(sys_args)
+	r = ode(plant).set_integrator(integrator)
+	r.set_initial_value(x0.numpy()).set_f_params(hist_u[0])
 
 	for _ in tqdm(range(n_iter), desc='MPC'):
-		u_opt = solve_mpc(t, x0, dt, K, B, obs, cost, h, **mpc_args)
+		u_opt, _ = solve_mpc(t, x0, dt, K, B, obs, cost, h, umin=umin, umax=umax, **mpc_args)
 		for j in range(n_apply):
-			u_cur = u_opt[j].squeeze() # for 1-dimensional inputs, produce float
-			sys_args.update({'u': u_cur})
-			r.set_f_params(sys_args)
+			u_cur = u_opt[:, j] 
+			r.set_f_params(u_cur)
 			r.integrate(r.t + dt)
 			t += dt
-			x0 = torch.Tensor(r.y) # update MPC initial condition with system output
+			x0 = torch.Tensor(r.y) # update MPC initial condition with plant output
 			hist_t.append(t)
 			hist_u.append(u_cur)
 			hist_x.append(x0)
 
-	hist_t, hist_u, hist_x = np.array(hist_t), np.array(hist_u), np.array(hist_x).T
+	hist_t, hist_u, hist_x = torch.Tensor(hist_t), torch.stack(hist_u), torch.stack(hist_x).t()
 	return hist_t, hist_u, hist_x
 
 
