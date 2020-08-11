@@ -15,7 +15,7 @@ def prep_snapshots(data: torch.Tensor, obs: Observable = None):
 		data: either snapshot matrix or batch of snapshot matrices
 			(a) d (observable dimension) x N (trajectory length)
 			(b) b (# simulations) x d (observable dimension) x N (trajectory length)
-		obs: Observable function.
+		obs: Observable function. If not provided, assumed as identity.
 
 	Returns:
 		X, Y: snapshot matrices.
