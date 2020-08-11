@@ -8,7 +8,8 @@ def system(mu: float):
 
 def dataset(mu: float, a=0, b=10, n=500):
 	t = linspace(a, b, n)
-	sol = solve_ivp(system(mu), [a, b], [1, 0], t_eval=t)
+	y0 = [1, 0]
+	sol = solve_ivp(system(mu), [a, b], y0, t_eval=t)
 	return torch.from_numpy(sol.y).float()
 
 if __name__ == '__main__':

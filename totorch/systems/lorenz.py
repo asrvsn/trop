@@ -1,35 +1,30 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from scipy.integrate import odeint
+from scipy.integrate import solve_ivp
 from mpl_toolkits.mplot3d import Axes3D
 
-def system(z, t, sigma, beta, rho):
-	u, v, w = z
-	du = -sigma*(u-v)
-	dv = rho*u - v - u*w
-	dw = -beta*w + u*v
-	return du, dv, dw
+def system(sigma, beta, rho):
+	def f(t, z):
+		u, v, w = z
+		du = -sigma*(u-v)
+		dv = rho*u - v - u*w
+		dw = -beta*w + u*v
+		return du, dv, dw
+	return f
 
-def dataset(tmax: int, n: int):
-	sigma, beta, rho = 10, 2.667, 28
+def dataset(a=0., b=100., n=1000, sigma=10, beta=2.667, rho=28):
 	u0, v0, w0 = 0, 1, 1.05
-	t = np.linspace(0, tmax, n)
-	f = odeint(system, (u0, v0, w0), t, args=(sigma, beta, rho))
-	X, Y = f[:-1].T, f[1:].T
-	return torch.from_numpy(X).float(), torch.from_numpy(Y).float()
+	t = np.linspace(a, b, n)
+	sol = solve_ivp(system(sigma, beta, rho), [a, b], (u0, v0, w0), t_eval=t)
+	return torch.from_numpy(sol.y).float()
 
 if __name__ == '__main__':
-	tmax, n = 100, 10000
-	X, _ = dataset(tmax, n)
+	n = 10000
+	X = dataset(n=n)
 	x, y, z = X[0].numpy(), X[1].numpy(), X[2].numpy()
 	fig = plt.figure()
 	ax = fig.gca(projection='3d')
-
-	s = 10
-	c = np.linspace(0, 1, n)
-	for i in range(0,n-s,s):
-		ax.plot(x[i:i+s+1], y[i:i+s+1], z[i:i+s+1], color=(1,c[i],0), alpha=0.4)
-
+	ax.plot(x, y, z)
 	ax.set_axis_off()
 	plt.show()
