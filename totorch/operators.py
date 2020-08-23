@@ -6,6 +6,49 @@ from typing import Callable, List
 
 from totorch.features import *
 
+class Koopman:
+	''' Intended for use in numpy land ''' 
+	def __init__(self, K: np.ndarray, obs: Observable, transpose=False):
+		self._K = K
+		self.K_torch = torch.from_numpy(K)
+		self.obs = obs
+		self.transpose = transpose
+		self.offset0 = np.zeros(K.shape)
+		self.offset = self.offset0
+
+	def __matmul__(self, x: np.ndarray):
+		if self.transpose:
+			return self.obs.call_numpy(self.obs.preimage((self.K.T@x).T)).T
+		else:
+			return self.obs.call_numpy(self.obs.preimage(self.K@x))
+
+	def __rmatmul__(self, x: np.ndarray):
+		print('called!')
+		if self.transpose:
+			return self.obs.call_numpy(self.obs.preimage(x@self.K.T))
+		else:
+			return self.obs.call_numpy(self.obs.preimage((x@self.K).T)).T
+
+	def torch_dot(self, x: torch.Tensor):
+		return self.obs(self.obs.preimage(self.K_torch@x))
+
+	@property
+	def T(self):
+		return Koopman(self.K, self.obs, transpose=(not self.transpose))
+
+	@property
+	def K(self):
+		return self._K + self.offset
+
+	def set_offset(self, offset: np.ndarray):
+		self.offset = offset
+
+	def zero_offset(self):
+		self.offset = self.offset0
+
+	def re_project(self, x: np.ndarray):
+		return self.obs.call_numpy(self.obs.preimage(x))
+
 """ Snapshot generation """ 
 
 def prep_snapshots(data: torch.Tensor, obs: Observable = None):

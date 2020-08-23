@@ -148,6 +148,17 @@ class PolynomialObservable(Observable):
 						Z[i] *= torch.pow(X[term], power)
 			return Z
 
+	def call_numpy(self, X: np.ndarray):
+		if len(X.shape) == 1:
+			Z = np.ones(self.k)
+		else:
+			Z = np.ones((self.k, X.shape[1]))
+		for i, key in enumerate(self.psi.keys()):
+			for term, power in enumerate(key):
+				if power > 0:
+					Z[i] *= np.power(X[term], power)
+		return Z
+
 	def preimage(self, Z: torch.Tensor): 
 		return Z[:self.d]
 

@@ -6,6 +6,7 @@ import itertools
 import traceback
 from tqdm import tqdm
 import multiprocessing
+import pdb
 
 from totorch.features import *
 
@@ -80,12 +81,11 @@ def extrapolate(
 		else:
 			Z = torch.full((obs.k, t), np.nan, device=X0.device)
 			Z[:, 0] = obs(X0[:, :obs.m]).view(-1)
-			z = Z[:, obs.m-1].unsqueeze(1)
 			for i in range(obs.m, t):
-				z = K@z
+				j = i-obs.m
+				Z[:, j+1] = K@Z[:,j]
 				if u is not None:
-					z += B@u[:, i-1]
-				Z[:, i] = z.view(-1)
+					Z[:, j+1] += B@u[:, i-1]
 			return obs.preimage(Z)
 
 def _tr_worker(ic: tuple, K: torch.Tensor, obs: Observable, T: int):
