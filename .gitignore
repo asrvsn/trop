@@ -1,4 +1,6 @@
 __pycache__/
+build/
+dist/
 *.prof
 .DS_Store
 *.egg-info/
