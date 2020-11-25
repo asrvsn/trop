@@ -1,3 +1,6 @@
 __pycache__/
 *.prof
 .DS_Store
+*.egg-info/
+*.pyc
+koopman.hkl
