@@ -1,0 +1,16 @@
+Metadata-Version: 2.1
+Name: trop
+Version: 0.0.1
+Summary: Transfer Operators in PyTorch
+Home-page: https://github.com/ooblahman/trop
+Author: Anand Srinivasan
+Author-email: anand@a0s.co
+License: UNKNOWN
+Description: # trop: A differentiable toolbox for working with transfer operators in PyTorch
+        
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.6
+Description-Content-Type: text/markdown
