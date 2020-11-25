@@ -4,18 +4,18 @@ import matplotlib.pyplot as plt
 import torch
 
 def system(mu: float):
-	return lambda t, z: [z[1], mu*(1-z[0]**2)*z[1] - z[0]]
+	return lambda t, z: np.array([z[1], mu*(1-z[0]**2)*z[1] - z[0]])
 
-def dataset(mu: float, a=0, b=10, n=500):
-	t = linspace(a, b, n)
-	y0 = [1, 0]
-	sol = solve_ivp(system(mu), [a, b], y0, t_eval=t)
+def dataset(mu: float, t0=0, tf=10, n=500):
+	t = linspace(t0, tf, n)
+	y0 = np.array([1, 0])
+	sol = solve_ivp(system(mu), [t0, tf], y0, t_eval=t)
 	return torch.from_numpy(sol.y).float()
 
 if __name__ == '__main__':
 	mu = 3
 
-	sol = dataset(mu, b=20, n=8000, skip=3500)
+	sol = dataset(mu, tf=20, n=8000, skip=3500)
 	X, Y = sol[:, :-1], sol[:, 1:]
 	print(X.shape, Y.shape)
 	plt.figure(figsize=(8,8))
